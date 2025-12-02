@@ -1,5 +1,5 @@
 # Data
-DATA_ROOT = './patches'
+DATA_ROOT = '/kaggle/input/lizard-in-patches/patches'
 STAIN_REFERENCE_PATH = './data/stain_reference.png'
 
 CLASS_NAMES = {
