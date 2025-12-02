@@ -69,7 +69,10 @@ class SegmentationVisualizer(pl.Callback):
             mask_path = path.replace("/img/", "/mask/")
             true_mask = np.array(Image.open(mask_path))
 
-            x = self.to_tensor(img).unsqueeze(0).to(pl_module.device)
+            img_tensor = self.to_tensor(img)
+            img_tensor = self.normalize(img_tensor)  
+            x = img_tensor.unsqueeze(0).to(pl_module.device)
+
             logits = pl_module(x)
             pred_mask = torch.argmax(logits, dim=1)[0].cpu().numpy()
 
