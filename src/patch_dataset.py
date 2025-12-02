@@ -36,7 +36,7 @@ class PatchDataset(Dataset):
         if self.transform:
             aug = self.transform(image=img, mask=mask)
             img = aug["image"]
-            mask = aug["mask"]
+            mask = aug["mask"].long()
         else:
             img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1) / 255.0
             mask = torch.tensor(mask, dtype=torch.long)

@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import cv2
 
 from patch_dataset import PatchDataset
 
@@ -29,6 +30,7 @@ class PatchDataModule(pl.LightningDataModule):
                 shift_limit=0.05,
                 scale_limit=0.10,
                 rotate_limit=20,
+                border_mode=cv2.BORDER_CONSTANT,
                 value=0, mask_value=0, p=0.5
             ),
 
@@ -45,8 +47,10 @@ class PatchDataModule(pl.LightningDataModule):
 
             A.OneOf([
                 A.ElasticTransform(alpha=20, sigma=20, alpha_affine=10,
+                                border_mode=cv2.BORDER_CONSTANT,
                                 value=0, mask_value=0, p=1.0),
                 A.GridDistortion(distort_limit=0.05,
+                                border_mode=cv2.BORDER_CONSTANT,
                                 value=0, mask_value=0, p=1.0),
             ], p=0.2),
 
