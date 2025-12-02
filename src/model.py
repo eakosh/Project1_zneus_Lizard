@@ -155,6 +155,9 @@ class UNetSegmentation(pl.LightningModule):
             self.log(f"{stage}/iou_class_{cls}", iou, on_epoch=True, prog_bar=False)
 
         return loss
+    
+    def compute_per_class_iou(self, logits, masks):
+        return per_class_iou(logits, masks, self.num_classes)
 
     def training_step(self, batch, batch_idx):
         return self.shared_step(batch, "train")
