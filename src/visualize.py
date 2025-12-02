@@ -4,6 +4,8 @@ import pytorch_lightning as pl
 from torchvision.utils import make_grid
 import torch
 import wandb
+import glob
+from torchvision import transforms as T
 
 
 COLORS = {
@@ -28,47 +30,54 @@ def colorize_mask(mask):
 
 
 class SegmentationVisualizer(pl.Callback):
-    def __init__(self, num_samples=3, every_n_epochs=10):
+    def __init__(self, 
+                 val_img_dir="patches/val/img",
+                 val_mask_dir="patches/val/mask",
+                 num_samples=3,
+                 every_n_epochs=10):
+
         super().__init__()
+        self.val_img_dir = val_img_dir
+        self.val_mask_dir = val_mask_dir
         self.num_samples = num_samples
         self.every_n_epochs = every_n_epochs
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+        self.img_paths = sorted(glob.glob(f"{val_img_dir}/*.png"))
 
+        self.img_paths = self.img_paths[:num_samples]
+
+        self.to_tensor = T.ToTensor()
+
+
+    def on_validation_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch
+
         if epoch % self.every_n_epochs != 0:
             return
 
         if not hasattr(trainer.logger, "experiment"):
             return
-        if not isinstance(trainer.logger.experiment, wandb.wandb_sdk.wandb_run.Run):
-            return
 
-        val_loader = trainer.datamodule.val_dataloader()
-        batch = next(iter(val_loader))
+        logs = {}
 
-        images, masks = batch
-        images = images.to(pl_module.device)
-        masks = masks.to(pl_module.device)
+        vis_list = []
 
-        logits = pl_module(images)
-        preds = torch.argmax(logits, dim=1).cpu().numpy()
+        for path in self.img_paths:
+            img = Image.open(path).convert("RGB")
+            img_np = np.array(img)
 
-        cls_ious = pl_module.compute_per_class_iou(logits, masks)
-        for cls, iou in cls_ious.items():
-            trainer.logger.experiment.log({f"val/iou_class_{cls}": iou})
+            mask_path = path.replace("/img/", "/mask/")
+            true_mask = np.array(Image.open(mask_path))
 
-        img_logs = []
-
-        for i in range(min(self.num_samples, len(images))):
-            img = (images[i].cpu().permute(1,2,0).numpy() * 255).astype(np.uint8)
-            true_mask = masks[i].cpu().numpy()
-            pred_mask = preds[i]
+            x = self.to_tensor(img).unsqueeze(0).to(pl_module.device)
+            logits = pl_module(x)
+            pred_mask = torch.argmax(logits, dim=1)[0].cpu().numpy()
 
             true_color = colorize_mask(true_mask)
             pred_color = colorize_mask(pred_mask)
 
-            combined = np.concatenate([img, true_color, pred_color], axis=1)
-            img_logs.append(wandb.Image(combined, caption=f"epoch {epoch}, sample {i}"))
+            combined = np.concatenate([img_np, true_color, pred_color], axis=1)
+            vis_list.append(wandb.Image(combined, caption=f"{path}"))
 
-        trainer.logger.experiment.log({"val_examples": img_logs})
+        logs["val_examples"] = vis_list
+        trainer.logger.experiment.log(logs)

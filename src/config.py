@@ -43,3 +43,9 @@ WANDB_PROJECT = 'zneus2'
 WANDB_ENTITY = 'eakosh-' 
 WANDB_LOG_MODEL = True 
 WANDB_WATCH_MODEL = True  
+
+# Visualization
+VISUALIZE_NUM_SAMPLES = 3
+VISUALIZE_EVERY_N_EPOCHS = 10
+VAL_IMG_DIR = DATA_ROOT + '/val/img'
+VAL_MASK_DIR = DATA_ROOT + '/val/mask'
