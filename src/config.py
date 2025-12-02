@@ -15,13 +15,13 @@ CLASS_NAMES = {
 }
 
 CLASS_WEIGHTS = torch.tensor([
-    1.0000,  
-    491.3849,
-    7.8228,  
-    43.6471,  
-    137.7204, 
-    903.1321, 
-    25.1461,  
+    1.00,   # 0 Background
+    7.00,   # 1 Neutrophil
+    1.43,   # 2 Epithelial
+    2.16,   # 3 Lymphocyte
+    4.16,   # 4 Plasma
+    7.00,   # 5 Eosinophil
+    2.11,   # 6 Connective tissue
 ], dtype=torch.float32)
 
 
