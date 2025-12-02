@@ -153,9 +153,9 @@ class UNetSegmentation(pl.LightningModule):
         miou = mean_iou(cls_ious)
         acc = pixel_accuracy(logits, masks)
 
-        self.log(f"{stage}/loss", loss, on_epoch=True, prog_bar=True)
-        self.log(f"{stage}/miou", miou, on_epoch=True, prog_bar=True)
-        self.log(f"{stage}/acc", acc, on_epoch=True, prog_bar=False)
+        self.log(f"{stage}/loss", loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log(f"{stage}/miou", miou, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log(f"{stage}/acc", acc, on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
 
         for cls, iou in cls_ious.items():
             self.log(f"{stage}/iou_class_{cls}", iou, on_epoch=True, prog_bar=False)

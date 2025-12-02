@@ -67,10 +67,11 @@ def main(args):
 
     early_stop_callback = EarlyStopping(
         monitor="val/miou",
-        min_delta=1e-4,
+        min_delta=0.001,  
         patience=config.EARLY_STOPPING_PATIENCE,
         mode="max",
         verbose=True,
+        check_on_train_epoch_end=False, 
     )
 
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
