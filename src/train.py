@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import logging
+from pytorch_lightning.callbacks.progress import TQDMProgressBar
 
 from model import UNetSegmentation 
 from patch_datamodule import PatchDataModule
@@ -96,7 +97,12 @@ def main(args):
             checkpoint_callback,
             early_stop_callback, 
             lr_monitor,
-            SegmentationVisualizer(num_samples=config.VISUALIZE_NUM_SAMPLES, every_n_epochs=config.VISUALIZE_EVERY_N_EPOCHS, val_img_dir=config.VAL_IMG_DIR, val_mask_dir=config.VAL_MASK_DIR),],
+            SegmentationVisualizer(
+                num_samples=config.VISUALIZE_NUM_SAMPLES, 
+                every_n_epochs=config.VISUALIZE_EVERY_N_EPOCHS, 
+                val_img_dir=config.VAL_IMG_DIR, 
+                val_mask_dir=config.VAL_MASK_DIR),
+                TQDMProgressBar(refresh_rate=20)],
         logger=loggers if len(loggers) > 0 else None,
         log_every_n_steps=10,
         precision="16-mixed" if torch.cuda.is_available() else 32,
