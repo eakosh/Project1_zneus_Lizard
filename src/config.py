@@ -1,3 +1,5 @@
+import torch
+
 # Data
 DATA_ROOT = '/kaggle/input/lizard-in-patches/patches'
 STAIN_REFERENCE_PATH = './data/stain_reference.png'
@@ -11,6 +13,17 @@ CLASS_NAMES = {
     5: 'Eosinophil',
     6: 'Connective Tissue'
 }
+
+CLASS_WEIGHTS = torch.tensor([
+    1.0000,  
+    491.3849,
+    7.8228,  
+    43.6471,  
+    137.7204, 
+    903.1321, 
+    25.1461,  
+], dtype=torch.float32)
+
 
 # Model architecture
 NUM_CLASSES = 7
@@ -26,7 +39,7 @@ NUM_WORKERS = 4
 PIN_MEMORY = True
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-5
-MAX_EPOCHS = 100
+MAX_EPOCHS = 150
 EARLY_STOPPING_PATIENCE = 15
 
 # Validation
@@ -35,7 +48,7 @@ VAL_BATCH_SIZE = 8
 # Checkpointing
 CHECKPOINT_DIR = './checkpoints'
 LOG_DIR = './logs'
-EXPERIMENT_NAME = "unet"
+EXPERIMENT_NAME = "unet_class_weights"
 
 # Weights & Biases
 USE_WANDB = True

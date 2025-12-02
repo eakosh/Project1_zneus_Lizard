@@ -100,7 +100,12 @@ def pixel_accuracy(logits, target):
 
 
 class UNetSegmentation(pl.LightningModule):
-    def __init__(self, in_channels=3, num_classes=7, learning_rate=1e-3):
+    def __init__(self,
+                class_weights,
+                in_channels=3, 
+                num_classes=7, 
+                learning_rate=1e-3, 
+                ):
         super().__init__()
         self.save_hyperparameters()
 
@@ -122,7 +127,8 @@ class UNetSegmentation(pl.LightningModule):
 
         self.outc = OutConv(64, num_classes)
 
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.register_buffer('class_weights', class_weights)
+        self.loss_fn = nn.CrossEntropyLoss(weight=self.class_weights)
 
     def forward(self, x):
         x1 = self.inc(x)
