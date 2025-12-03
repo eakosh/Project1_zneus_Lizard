@@ -113,18 +113,20 @@ class UNetSegmentation(pl.LightningModule):
         self.learning_rate = learning_rate
         self.num_classes = num_classes
 
-        self.inc = DoubleConv(in_channels, 32)
-        self.down1 = Down(32, 64)
-        self.down2 = Down(64, 128)
-        self.down3 = Down(128, 256)
-        self.down4 = Down(256, 256)
+        # Encoder
+        self.inc = DoubleConv(in_channels, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 256)
+        self.down3 = Down(256, 512)
+        self.down4 = Down(512, 512)
 
-        self.up1 = Up(256 + 256, 128)
-        self.up2 = Up(128 + 128, 64)
-        self.up3 = Up(64 + 64, 32)
-        self.up4 = Up(32 + 32, 32)
+        # Decoder
+        self.up1 = Up(512 + 512, 256)
+        self.up2 = Up(256 + 256, 128)
+        self.up3 = Up(128 + 128, 64)
+        self.up4 = Up(64 + 64, 64)
 
-        self.outc = OutConv(32, num_classes)
+        self.outc = OutConv(64, num_classes)
 
         self.loss_fn = ComboLoss(
             gamma=2.0,

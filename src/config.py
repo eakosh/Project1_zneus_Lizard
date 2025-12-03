@@ -24,6 +24,8 @@ CLASS_WEIGHTS = torch.tensor([
     2.11,   # 6 Connective tissue
 ], dtype=torch.float32)
 
+RARE_CLASSES = {1, 5}       # Neutrophil, Eosinophil
+OVERSAMPLE_FACTOR = 4 
 
 # Model architecture
 NUM_CLASSES = 7

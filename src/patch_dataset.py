@@ -1,9 +1,10 @@
-import os
+import os 
 from glob import glob
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
 import numpy as np
+from config import *
 
 
 class PatchDataset(Dataset):
@@ -14,8 +15,27 @@ class PatchDataset(Dataset):
         self.img_dir = os.path.join(root_dir, split, "img")
         self.mask_dir = os.path.join(root_dir, split, "mask")
 
-        self.img_paths = sorted(glob(os.path.join(self.img_dir, "*.png")))
-        assert len(self.img_paths) > 0, f"No images found in {self.img_dir}"
+        img_paths = sorted(glob(os.path.join(self.img_dir, "*.png")))
+        assert len(img_paths) > 0, f"No images found in {self.img_dir}"
+
+        self.img_paths = []
+        
+        for img_path in img_paths:
+            name = os.path.basename(img_path)
+            mask_path = os.path.join(self.mask_dir, name)
+
+            mask = np.array(Image.open(mask_path).convert("L"))
+
+            unique = set(np.unique(mask))
+
+            if len(unique & RARE_CLASSES) > 0:
+                for _ in range(OVERSAMPLE_FACTOR):
+                    self.img_paths.append(img_path)
+            else:
+                self.img_paths.append(img_path)
+
+        print(f"[PatchDataset] Loaded {len(img_paths)} original patches, "
+              f"oversampled to {len(self.img_paths)} patches.")
 
     def __len__(self):
         return len(self.img_paths)
@@ -30,8 +50,7 @@ class PatchDataset(Dataset):
         mask = Image.open(mask_path).convert("L")  
 
         img = np.array(img)
-        mask = np.array(mask)
-        mask = mask.astype(np.int64)  
+        mask = np.array(mask, dtype=np.int64)
 
         if self.transform:
             aug = self.transform(image=img, mask=mask)
