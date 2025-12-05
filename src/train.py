@@ -11,7 +11,7 @@ from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import logging
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 
-from model import UNetSegmentation 
+from model import  Virchow2UPerNetSegmentation
 from patch_datamodule import PatchDataModule
 from visualize import SegmentationVisualizer
 import config
@@ -48,11 +48,11 @@ def main(args):
     print(f"  Test patches:  {len(datamodule.test_ds)}")
     print("Dataset ready\n")
 
-    model = UNetSegmentation(
+    model = Virchow2UPerNetSegmentation(
         in_channels=3,
         num_classes=7,
-        learning_rate=config.LEARNING_RATE,
-        class_weights=config.CLASS_WEIGHTS,
+        learning_rate=1e-4,
+        freeze_encoder=True, 
     )
 
     checkpoint_callback = ModelCheckpoint(

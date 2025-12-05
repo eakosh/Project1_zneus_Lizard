@@ -1,7 +1,7 @@
 import torch
 
 # Data
-DATA_ROOT = '/kaggle/input/lizard-in-patches/patches'
+DATA_ROOT = 'patches'
 STAIN_REFERENCE_PATH = './data/stain_reference.png'
 
 CLASS_NAMES = {
@@ -25,7 +25,7 @@ CLASS_WEIGHTS = torch.tensor([
 ], dtype=torch.float32)
 
 RARE_CLASSES = {1, 5}       # Neutrophil, Eosinophil
-OVERSAMPLE_FACTOR = 0 
+OVERSAMPLE_FACTOR = 4 
 
 # Model architecture
 NUM_CLASSES = 7
