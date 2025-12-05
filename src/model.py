@@ -264,7 +264,7 @@ class Virchow2Backbone(nn.Module):
 
 
 class PyramidPoolingModule(nn.Module):
-    def __init__(self, in_channels: int, pool_sizes=(1, 2, 3, 6), out_channels: int = 256):
+    def __init__(self, in_channels, pool_sizes=(1, 2, 3, 6), out_channels=256):
         super().__init__()
         self.stages = nn.ModuleList()
         for ps in pool_sizes:
@@ -272,7 +272,7 @@ class PyramidPoolingModule(nn.Module):
                 nn.Sequential(
                     nn.AdaptiveAvgPool2d(ps),
                     nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-                    nn.BatchNorm2d(out_channels),
+                    nn.GroupNorm(32, out_channels),     
                     nn.ReLU(inplace=True),
                 )
             )
