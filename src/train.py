@@ -11,7 +11,8 @@ from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import logging
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 
-from model import  Virchow2UPerNetSegmentation
+from model import Virchow2UNIPyramid
+from losses import ComboLoss
 from patch_datamodule import PatchDataModule
 from visualize import SegmentationVisualizer
 import config
@@ -48,11 +49,18 @@ def main(args):
     print(f"  Test patches:  {len(datamodule.test_ds)}")
     print("Dataset ready\n")
 
-    model = Virchow2UPerNetSegmentation(
-        in_channels=3,
+    loss_fn = ComboLoss(
+        gamma=2.0,
+        ce_weight=0.3,
+        focal_weight=0.5,
+        dice_weight=0.2
+    )  
+    
+    model = Virchow2UNIPyramid(
         num_classes=7,
-        learning_rate=4e-4,
-        freeze_encoder=True, 
+        lr=1e-4,
+        encoder_trainable=False,
+        loss_fn=loss_fn,
     )
 
     # checkpoint_callback = ModelCheckpoint(

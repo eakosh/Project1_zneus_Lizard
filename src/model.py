@@ -232,195 +232,165 @@ class UNetSegmentation(pl.LightningModule):
 
 
 
-#  Virchow2 
+import math
+from typing import Optional
 
-class Virchow2Backbone(nn.Module):
-    def __init__(self, freeze_encoder: bool = True):
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import pytorch_lightning as pl
+import timm
+from timm.layers import SwiGLUPacked
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_ch, out_ch):
         super().__init__()
-
-        self.encoder = timm.create_model(
-            "hf_hub:paige-ai/Virchow2",
-            pretrained=True,
-            mlp_layer=SwiGLUPacked,
-            act_layer=nn.SiLU
-        )
-
-        self.embed_dim = 1280 
-        self.patch_grid = 16   # 224 / 14 = 16 → 16x16 
-
-        if freeze_encoder:
-            for p in self.encoder.parameters():
-                p.requires_grad = False
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.encoder(x)                # B x 261 x 1280
-        patch_tokens = out[:, 5:, :]         #  cls + 4 register → B x 256 x 1280
-
-        B, N, C = patch_tokens.shape
-        h = w = int(N ** 0.5)                # 16
-        feat = patch_tokens.transpose(1, 2).reshape(B, C, h, w)  # B x 1280 x 16 x 16
-        return feat
-
-
-
-class PyramidPoolingModule(nn.Module):
-    def __init__(self, in_channels, pool_sizes=(1, 2, 3, 6), out_channels=256):
-        super().__init__()
-        self.stages = nn.ModuleList()
-        for ps in pool_sizes:
-            self.stages.append(
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(ps),
-                    nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-                    nn.GroupNorm(32, out_channels),     
-                    nn.ReLU(inplace=True),
-                )
-            )
-        self.pool_sizes = pool_sizes
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h, w = x.size(2), x.size(3)
-        priors = [x]
-        for stage in self.stages:
-            priors.append(
-                F.interpolate(
-                    stage(x),
-                    size=(h, w),
-                    mode="bilinear",
-                    align_corners=False,
-                )
-            )
-        return torch.cat(priors, dim=1)  # B x (in + len(pool_sizes)*out) x H x W
-
-
-
-class Virchow2UPerDecoder(nn.Module):
-    def __init__(
-        self,
-        in_channels_virchow: int = 1280,
-        ppm_pool_sizes=(1, 2, 3, 6),
-        ppm_out_channels: int = 256,
-        fpn_dim: int = 256,
-        num_classes: int = 7,
-    ):
-        super().__init__()
-
-        self.ppm = PyramidPoolingModule(
-            in_channels=in_channels_virchow,
-            pool_sizes=ppm_pool_sizes,
-            out_channels=ppm_out_channels
-        )
-
-        self.ppm_out_channels = in_channels_virchow + len(ppm_pool_sizes) * ppm_out_channels
-
-        self.enc_c4 = nn.Conv2d(self.ppm_out_channels, fpn_dim, kernel_size=1)       # 16x16
-        self.enc_c3 = nn.Conv2d(fpn_dim, fpn_dim, kernel_size=3, stride=2, padding=1)  # 8x8
-        self.enc_c2 = nn.Conv2d(fpn_dim, fpn_dim, kernel_size=3, stride=2, padding=1)  # 4x4
-        self.enc_c1 = nn.Conv2d(fpn_dim, fpn_dim, kernel_size=3, stride=2, padding=1)  # 2x2
-
-        self.fpn_fuse = nn.Sequential(
-            nn.Conv2d(fpn_dim * 4, fpn_dim, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(fpn_dim),
+        self.block = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
         )
 
-        self.classifier = nn.Conv2d(fpn_dim, num_classes, kernel_size=1)
-
-    def forward(self, virchow_feat: torch.Tensor) -> torch.Tensor:
-
-        x = self.ppm(virchow_feat)  # B x ppm_out_channels_total x 16 x 16
-
-        c4 = self.enc_c4(x)      # B x fpn_dim x 16 x 16
-        c3 = self.enc_c3(c4)     # B x fpn_dim x 8 x 8
-        c2 = self.enc_c2(c3)     # B x fpn_dim x 4 x 4
-        c1 = self.enc_c1(c2)     # B x fpn_dim x 2 x 2
-
-        h, w = c4.size(2), c4.size(3)
-
-        p4 = c4
-        p3 = F.interpolate(c3, size=(h, w), mode="bilinear", align_corners=False)
-        p2 = F.interpolate(c2, size=(h, w), mode="bilinear", align_corners=False)
-        p1 = F.interpolate(c1, size=(h, w), mode="bilinear", align_corners=False)
-
-        fpn_out = torch.cat([p4, p3, p2, p1], dim=1)  # B x (fpn_dim*4) x 16 x 16
-        fpn_out = self.fpn_fuse(fpn_out)             # B x fpn_dim x 16 x 16
-
-        logits = self.classifier(fpn_out)            # B x num_classes x 16 x 16
-        return logits
+    def forward(self, x):
+        return self.block(x)
 
 
+class UpBlock(nn.Module):
+    def __init__(self, in_ch, skip_ch, out_ch):
+        super().__init__()
+        self.conv = ConvBlock(in_ch + skip_ch, out_ch)
 
-class Virchow2UPerNetSegmentation(pl.LightningModule):
+    def forward(self, x, skip):
+        # x: low-res; skip: high-res
+        x = F.interpolate(x, size=skip.shape[-2:], mode="bilinear", align_corners=False)
+        x = torch.cat([x, skip], dim=1)
+        return self.conv(x)
+
+
+class Virchow2UNIPyramid(pl.LightningModule):
     def __init__(
         self,
-        in_channels: int = 3,
-        num_classes: int = 7,
-        learning_rate: float = 1e-4,
-        freeze_encoder: bool = True,
+        num_classes: int = 7,            
+        lr: float = 1e-4,
+        encoder_trainable: bool = False, 
+        weight_decay: float = 1e-4,
+        loss_fn: Optional[nn.Module] = None,    
     ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["loss_fn"])
 
-        self.learning_rate = learning_rate
-        self.num_classes = num_classes
-
-        self.backbone = Virchow2Backbone(freeze_encoder=freeze_encoder)
-
-        self.decoder = Virchow2UPerDecoder(
-            in_channels_virchow=self.backbone.embed_dim,
-            num_classes=num_classes,
+        self.encoder = timm.create_model(
+            "hf-hub:paige-ai/Virchow2",
+            pretrained=True,
+            mlp_layer=SwiGLUPacked,
+            act_layer=nn.SiLU,
         )
 
-        self.loss_fn = ComboLoss(
-            gamma=2.0,
-            ce_weight=0.3,
-            focal_weight=0.5,
-            dice_weight=0.2,
+        self.encoder_embed_dim = 1280
+
+        if not encoder_trainable:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+
+        base_ch = 256
+        self.proj = nn.Conv2d(self.encoder_embed_dim, base_ch, kernel_size=1)
+
+        self.down1 = nn.Conv2d(base_ch, base_ch * 2, kernel_size=3, stride=2, padding=1)  # 16→8
+        self.down2 = nn.Conv2d(base_ch * 2, base_ch * 4, kernel_size=3, stride=2, padding=1)  # 8→4
+        self.down3 = nn.Conv2d(base_ch * 4, base_ch * 8, kernel_size=3, stride=2, padding=1)  # 4→2
+
+        self.enc1 = ConvBlock(base_ch, base_ch)           # 16×16
+        self.enc2 = ConvBlock(base_ch * 2, base_ch * 2)   # 8×8
+        self.enc3 = ConvBlock(base_ch * 4, base_ch * 4)   # 4×4
+        self.enc4 = ConvBlock(base_ch * 8, base_ch * 8)   # 2×2
+
+        self.up3 = UpBlock(in_ch=base_ch * 8, skip_ch=base_ch * 4, out_ch=base_ch * 4)
+        self.up2 = UpBlock(in_ch=base_ch * 4, skip_ch=base_ch * 2, out_ch=base_ch * 2)
+        self.up1 = UpBlock(in_ch=base_ch * 2, skip_ch=base_ch, out_ch=base_ch)
+
+        self.seg_head = nn.Sequential(
+            nn.Conv2d(base_ch, base_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(base_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(base_ch, num_classes, kernel_size=1),
         )
+
+        if loss_fn is None:
+            self.loss_fn = nn.CrossEntropyLoss() 
+        else:
+            self.loss_fn = loss_fn
+
+
+    def _encode_virchow_tokens(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.encoder(x)  # B × 261 × 1280
+        patch_tokens = out[:, 5:, :]  # B × N × 1280
+
+        B, N, C = patch_tokens.shape
+        H_t = W_t = int(math.sqrt(N))
+        assert H_t * W_t == N, f"The num of tokens {N} is not the square, H_t*W_t != N"
+
+        feat = patch_tokens.transpose(1, 2).reshape(B, C, H_t, W_t)
+        return feat
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = x.shape
+        B, _, H, W = x.shape
 
-        virchow_feat = self.backbone(x)          # B x 1280 x 16 x 16
-        logits_small = self.decoder(virchow_feat)  # B x num_classes x 16 x 16
+        feat = self._encode_virchow_tokens(x)      # B × 1280 × H_t × W_t
+        feat = self.proj(feat)                     # B × 256 × H_t × W_t
 
-        # upsample (H x W)
+        f1 = self.enc1(feat)                       # B × 256 × H_t × W_t
+        f2 = self.enc2(self.down1(f1))             # B × 512 × H_t/2 × W_t/2
+        f3 = self.enc3(self.down2(f2))             # B × 1024 × H_t/4 × W_t/4
+        f4 = self.enc4(self.down3(f3))             # B × 2048 × H_t/8 × W_t/8
+
+        u3 = self.up3(f4, f3)                      # B × 1024 × H_t/4 × W_t/4
+        u2 = self.up2(u3, f2)                      # B × 512 × H_t/2 × W_t/2
+        u1 = self.up1(u2, f1)                      # B × 256 × H_t × W_t
+
+        logits_tok = self.seg_head(u1)             # B × num_classes × H_t × W_t
+
         logits = F.interpolate(
-            logits_small,
+            logits_tok,
             size=(H, W),
             mode="bilinear",
-            align_corners=False
+            align_corners=False,
         )
         return logits
 
-    def shared_step(self, batch, stage: str):
-        images, masks = batch               # masks: B x H x W, long
-        logits = self(images)
-        loss = self.loss_fn(logits, masks)
+    def training_step(self, batch, batch_idx):
+        imgs, masks = batch  
+        logits = self(imgs)
+        loss = self.loss_fn(logits, masks.long())
 
-        cls_ious = per_class_iou(logits, masks, self.num_classes)
-        miou = mean_iou(cls_ious)
-        acc = pixel_accuracy(logits, masks)
-
-        self.log(f"{stage}/loss", loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
-        self.log(f"{stage}/miou", miou, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
-        self.log(f"{stage}/acc", acc, on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
-
-        for cls, iou in cls_ious.items():
-            self.log(f"{stage}/iou_class_{cls}", iou, on_epoch=True, prog_bar=False)
-
+        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
-    def training_step(self, batch, batch_idx):
-        return self.shared_step(batch, "train")
-
     def validation_step(self, batch, batch_idx):
-        return self.shared_step(batch, "val")
+        imgs, masks = batch
+        logits = self(imgs)
+        loss = self.loss_fn(logits, masks.long())
 
-    def test_step(self, batch, batch_idx):
-        return self.shared_step(batch, "test")
+        self.log("val/loss", loss, on_epoch=True, prog_bar=True)
+        return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, self.parameters()),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.weight_decay,
+        )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=5
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val/loss",
+            },
+        }
