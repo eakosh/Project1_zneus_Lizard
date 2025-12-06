@@ -367,7 +367,7 @@ class Virchow2UNIPyramid(pl.LightningModule):
         logits = self(imgs)
         loss = self.loss_fn(logits, masks.long())
 
-        cls_ious = per_class_iou(logits, masks, self.num_classes)
+        cls_ious = per_class_iou(logits, masks, 7)
         miou = mean_iou(cls_ious)
         acc = pixel_accuracy(logits, masks)
 
@@ -384,7 +384,7 @@ class Virchow2UNIPyramid(pl.LightningModule):
         logits = self(imgs)
         loss = self.loss_fn(logits, masks.long())
 
-        cls_ious = per_class_iou(logits, masks, self.num_classes)
+        cls_ious = per_class_iou(logits, masks, 7)
         miou = mean_iou(cls_ious)
         acc = pixel_accuracy(logits, masks)
 
@@ -401,7 +401,7 @@ class Virchow2UNIPyramid(pl.LightningModule):
         logits = self(imgs)
         loss = self.loss_fn(logits, masks.long())
 
-        cls_ious = per_class_iou(logits, masks, self.num_classes)
+        cls_ious = per_class_iou(logits, masks, 7)
         miou = mean_iou(cls_ious)
         acc = pixel_accuracy(logits, masks)
 
